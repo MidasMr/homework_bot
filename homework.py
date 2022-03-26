@@ -36,6 +36,7 @@ HOMEWORK_STATUSES = {
 
 
 def send_message(bot, message):
+    """Отправка сообщения ботом"""
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -47,6 +48,7 @@ def send_message(bot, message):
 
 
 def get_api_answer(current_timestamp):
+    """Получаем ответ от эндпоинта"""
     params = {'from_date': current_timestamp}
     response = requests.get(ENDPOINT, headers=HEADERS, params=params)
     if response.status_code != 200:
@@ -55,6 +57,7 @@ def get_api_answer(current_timestamp):
 
 
 def check_response(response):
+    """Проверка ответа от эндпоинта на корректность"""
     if type(response) != dict:
         raise TypeError
     homeworks = response.get('homeworks')
@@ -65,6 +68,7 @@ def check_response(response):
 
 
 def parse_status(homework):
+    """Извлечение статуса о конкретной домашней работе"""
     homework_name = homework.get('homework_name')
     homework_status = homework.get('status')
     if homework_status not in HOMEWORK_STATUSES:
@@ -74,6 +78,7 @@ def parse_status(homework):
 
 
 def check_tokens():
+    """Проверка доспутности всех переменных окружения"""
     if (
         TELEGRAM_CHAT_ID is not None and TELEGRAM_TOKEN is not None
     ) and PRACTICUM_TOKEN is not None:
@@ -87,7 +92,6 @@ def check_tokens():
 
 def main():
     """Основная логика работы бота."""
-
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
 
@@ -109,8 +113,8 @@ def main():
         except ValueError as error:
             logging.error(f'Неивестный статус домашней работы: {error}')
 
-        except TypeError:
-            logging.error('Ошибка с типами')
+        except TypeError as error:
+            logging.error(f'Ошибка с типами: {error}')
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
