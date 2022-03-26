@@ -106,15 +106,19 @@ def main():
 
         except ConnectionError:
             logging.error('ошибка доступа к эндпоинту')
+            time.sleep(RETRY_TIME)
 
         except IndexError as error:
             logging.error(f'В ответе нет обновлений статуса: {error}')
+            time.sleep(RETRY_TIME)
 
         except ValueError as error:
             logging.error(f'Неивестный статус домашней работы: {error}')
+            time.sleep(RETRY_TIME)
 
         except TypeError as error:
             logging.error(f'Ошибка с типами: {error}')
+            time.sleep(RETRY_TIME)
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
