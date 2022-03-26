@@ -1,4 +1,3 @@
-from json import JSONDecodeError
 import logging
 import os
 import sys
@@ -48,38 +47,30 @@ def send_message(bot, message):
 
 
 def get_api_answer(current_timestamp):
-    try:
-        params = {'from_date': current_timestamp}
-        response = requests.get(ENDPOINT, headers=HEADERS, params=params)
-        return response.json()
-    except JSONDecodeError:
-        logging.error('ошибка доступа к эндпоинту')
-    except Exception as error:
-        logging.error(
-            f'Произошла ошибка при запросе к эндпоинту: {error}'
-        )
+    params = {'from_date': current_timestamp}
+    response = requests.get(ENDPOINT, headers=HEADERS, params=params)
+    if response.status_code != 200:
+        raise ConnectionError
+    return response.json()
 
 
 def check_response(response):
+    if type(response) != dict:
+        raise TypeError
     homeworks = response.get('homeworks')
-    if type(homeworks) == list:
-        return homeworks
-    raise TypeError
+    print(response)
+    if type(homeworks) != list:
+        raise TypeError
+    return homeworks
 
 
 def parse_status(homework):
-    try:
-        homework_name = homework[0].get('lesson_name')
-        homework_status = homework[0].get('status')
-        if homework_status not in HOMEWORK_STATUSES:
-            raise ValueError
-        verdict = HOMEWORK_STATUSES.get(homework_status)
-
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    except IndexError as error:
-        logging.error(f'В ответе нет обновлений статуса: {error}')
-    except ValueError as error:
-        logging.error(f'Неивестный статус домашней работы: {error}')
+    homework_name = homework.get('homework_name')
+    homework_status = homework.get('status')
+    if homework_status not in HOMEWORK_STATUSES:
+        raise KeyError
+    verdict = HOMEWORK_STATUSES.get(homework_status)
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
@@ -103,10 +94,23 @@ def main():
     while check_tokens() is True:
         try:
             response = get_api_answer(current_timestamp)
-            message = parse_status(check_response(response))
+            homework = check_response(response)
+            message = parse_status(homework[0])
             send_message(bot, message)
             current_timestamp = response.get('current_date')
             time.sleep(RETRY_TIME)
+
+        except ConnectionError:
+            logging.error('ошибка доступа к эндпоинту')
+
+        except IndexError as error:
+            logging.error(f'В ответе нет обновлений статуса: {error}')
+
+        except ValueError as error:
+            logging.error(f'Неивестный статус домашней работы: {error}')
+
+        except TypeError:
+            logging.error('Ошибка с типами')
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
