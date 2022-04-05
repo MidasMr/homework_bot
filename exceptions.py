@@ -1,0 +1,2 @@
+class ResponseStausCodeError(Exception):
+    pass
