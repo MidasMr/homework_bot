@@ -1,2 +1,6 @@
-class ResponseStausCodeError(Exception):
+class ResponseStatusCodeError(Exception):
+    pass
+
+
+class ResponseError(Exception):
     pass
