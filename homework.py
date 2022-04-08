@@ -50,7 +50,7 @@ SEND_EXCEPTION_MESSGAE = (
 )
 STATUS_CODE_EXCEPTION_MESSGAE = (
     'Код возврата отличен от "200": {status_code}. '
-    'Параметры запроса к серверу: эндпоинт {endpoint}, '
+    'Параметры запроса к серверу: эндпоинт {url}, '
     'хедеры {headers}, параметры {params}'
 )
 NOT_A_DICT_MESSAGE = 'Тип ответа от эндпоинта не словарь, а {type}'
@@ -59,17 +59,19 @@ UNEXPECTED_HOMEWORK_STATUS_MESSAGE = (
     'Неожиданный статус домашней работы: {status}'
 )
 RESPONSE_ERROR_MESSAGE = (
-    'Найден ключ ошибки в json ответа от эндпоинта: {response}'
+    'Найден ключ ошибки "{key}" в json ответа от эндпоинта: {url}. '
+    'ошибка: {error}, хедеры: {headers}, параметры: {params}'
 )
 REQUEST_EXCEPTION_MESSAGE = (
     'Произошел сбой сети: {error}'
-    'Параметры запроса к серверу: эндпоинт {endpoint}, '
+    'Параметры запроса к серверу: эндпоинт {url}, '
     'хедеры {headers}, параметры {params}'
 )
 MAIN_ERROR_MESSAGE = 'Сбой в работе программы: {error}'
 NO_TOKEN_MESSAGE = (
-    'Отсутсвует обязательная(-ые) переменная(-ые) окружения:{name}'
+    'Отсутсвует обязательная(-ые) переменная(-ые) окружения:{names}'
 )
+NO_HOMEWORK_KEY_MESSAGE = 'В ответе от эндпоинта не найдено ключа "homeworks"'
 
 
 def send_message(bot, message):
@@ -91,29 +93,41 @@ def send_message(bot, message):
 def get_api_answer(current_timestamp):
     """Получаем ответ от эндпоинта."""
     params = {'from_date': current_timestamp}
+    request_params = dict(url=ENDPOINT, headers=HEADERS, params=params)
     try:
-        response = requests.get(ENDPOINT, headers=HEADERS, params=params)
+        response = requests.get(**request_params)
 
     except requests.exceptions.RequestException as error:
-        raise IOError(
+        raise ConnectionError(
             error=error,
-            endpoint=ENDPOINT,
-            headers=HEADERS,
-            params=params
+            **request_params
         )
 
     json_response = response.json()
-    if 'code' in json_response or 'error' in json_response:
+    if 'code' in json_response:
+        error = json_response.get('code')
         raise ResponseError(
-            RESPONSE_ERROR_MESSAGE.format(response=json_response)
+            RESPONSE_ERROR_MESSAGE.format(
+                key='code',
+                error=error,
+                **request_params
+            )
+        )
+
+    if 'error' in json_response:
+        error = json_response.get('error')
+        raise ResponseError(
+            RESPONSE_ERROR_MESSAGE.format(
+                key='code',
+                error=error,
+                **request_params
+            )
         )
     if response.status_code != 200:
         raise ResponseStatusCodeError(
             STATUS_CODE_EXCEPTION_MESSGAE.format(
                 status_code=response.status_code,
-                endpoint=ENDPOINT,
-                headers=HEADERS,
-                params=params
+                **request_params
             )
         )
 
@@ -125,9 +139,7 @@ def check_response(response):
     if not isinstance(response, dict):
         raise TypeError(NOT_A_DICT_MESSAGE.format(type=type(response)))
     if 'homeworks' not in response:
-        raise KeyError(
-            'В ответе от эндпоинта не найдено ключа "homeworks"'
-        )
+        raise KeyError(NO_HOMEWORK_KEY_MESSAGE)
     homeworks = response.get('homeworks')
     if not isinstance(homeworks, list):
         raise TypeError(NOT_A_LIST_MESSAGE.format(type=type(homeworks)))
@@ -149,19 +161,19 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка доспутности всех переменных окружения."""
-    result = True
-    for name in TOKEN_NAMES:
-        if globals()[name] is None:
-            result = False
-            logger.critical(NO_TOKEN_MESSAGE.format(name=name))
-    return result
+    tokens = [token for token in TOKEN_NAMES if globals()[token] is not None]
+    if len(tokens) != len(TOKEN_NAMES):
+        names = set(TOKEN_NAMES).difference(set(tokens))
+        logger.critical(NO_TOKEN_MESSAGE.format(names=names))
+        return False
+    return True
 
 
 def main():
     """Основная логика работы бота."""
     current_timestamp = int(time.time())
-
-    while check_tokens() is True:
+    tokens_check = check_tokens()
+    while tokens_check:
         try:
             bot = telegram.Bot(token=TELEGRAM_TOKEN)
             response = get_api_answer(current_timestamp)
