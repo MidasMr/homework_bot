@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import requests
 import telegram
 
-from exceptions import ResponseStatusCodeError, ResponseError
+import exceptions
 
 load_dotenv()
 
@@ -72,6 +72,10 @@ NO_TOKEN_MESSAGE = (
     'Отсутсвует обязательная(-ые) переменная(-ые) окружения:{names}'
 )
 NO_HOMEWORK_KEY_MESSAGE = 'В ответе от эндпоинта не найдено ключа "homeworks"'
+ERROR_CODES = ('code', 'error')
+MISSING_TOKENS_ERROR_MESSAGE = (
+    'Отсутсвует обязательная(-ые) переменная(-ые) окружения'
+)
 
 
 def send_message(bot, message):
@@ -104,27 +108,19 @@ def get_api_answer(current_timestamp):
         )
 
     json_response = response.json()
-    if 'code' in json_response:
-        error = json_response.get('code')
-        raise ResponseError(
-            RESPONSE_ERROR_MESSAGE.format(
-                key='code',
-                error=error,
-                **request_params
+    for code in ERROR_CODES:
+        if code in json_response:
+            error = json_response.get(code)
+            raise exceptions.ResponseError(
+                RESPONSE_ERROR_MESSAGE.format(
+                    key=code,
+                    error=error,
+                    **request_params
+                )
             )
-        )
 
-    if 'error' in json_response:
-        error = json_response.get('error')
-        raise ResponseError(
-            RESPONSE_ERROR_MESSAGE.format(
-                key='code',
-                error=error,
-                **request_params
-            )
-        )
     if response.status_code != 200:
-        raise ResponseStatusCodeError(
+        raise exceptions.ResponseStatusCodeError(
             STATUS_CODE_EXCEPTION_MESSGAE.format(
                 status_code=response.status_code,
                 **request_params
@@ -161,29 +157,26 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка доспутности всех переменных окружения."""
-    tokens = [token for token in TOKEN_NAMES if globals()[token] is not None]
-    if len(tokens) != len(TOKEN_NAMES):
-        names = set(TOKEN_NAMES).difference(set(tokens))
-        logger.critical(NO_TOKEN_MESSAGE.format(names=names))
-        return False
-    return True
+    tokens = [token for token in TOKEN_NAMES if globals()[token] is None]
+    if tokens:
+        logger.critical(NO_TOKEN_MESSAGE.format(names=tokens))
+    return not tokens
 
 
 def main():
     """Основная логика работы бота."""
     current_timestamp = int(time.time())
-    tokens_check = check_tokens()
-    while tokens_check:
+    if not check_tokens():
+        raise exceptions.MissingTokenError(MISSING_TOKENS_ERROR_MESSAGE)
+    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    while True:
         try:
-            bot = telegram.Bot(token=TELEGRAM_TOKEN)
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if homeworks:
-                message = parse_status(homeworks[0])
-                if send_message(bot, message):
-                    current_timestamp = response.get(
-                        'current_date', current_timestamp
-                    )
+            if homeworks and send_message(bot, parse_status(homeworks[0])):
+                current_timestamp = response.get(
+                    'current_date', current_timestamp
+                )
 
         except Exception as error:
             message = MAIN_ERROR_MESSAGE.format(error=error)

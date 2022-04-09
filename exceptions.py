@@ -4,3 +4,7 @@ class ResponseStatusCodeError(Exception):
 
 class ResponseError(Exception):
     pass
+
+
+class MissingTokenError(Exception):
+    pass
